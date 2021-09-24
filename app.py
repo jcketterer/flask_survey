@@ -32,7 +32,7 @@ def survey_questions():
 def handle_questions():
     """Saving Responses and navigating to next question."""
     choice = request.form["answer"]
-
+    print(choice)
     responses = session[responses_key]
     responses.append(choice)
     session[responses_key] = responses
