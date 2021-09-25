@@ -1,7 +1,14 @@
-from logging import debug
-from flask import Flask, request, render_template, redirect, flash, session
-from flask_debugtoolbar import DebugToolbar, DebugToolbarExtension
-from surveys import satisfaction_survey as survey
+from flask import (
+    Flask,
+    request,
+    render_template,
+    redirect,
+    flash,
+    session,
+    make_response,
+)
+from flask_debugtoolbar import DebugToolbarExtension
+from surveys import surveys
 
 
 app = Flask(__name__)
@@ -10,12 +17,27 @@ app.config["SECRET_KEY"] = "dejaentendu"
 app.config["DEBUG_TB_INTERCEPT_REDIRECTS"] = False
 debug = DebugToolbarExtension(app)
 
+current_survey_key = "current_survey"
 responses_key = "responses"
 
 
 @app.route("/")
 def show_beginning_of_survey():
-    """Renders main survey page"""
+    """renders page to choose a survey"""
+
+    return render_template("survey-choice.html", surveys=surveys)
+
+
+@app.route("/", methods=["POST"])
+def choose_survey():
+    """Returns survey to choose from"""
+    survey_id = request.form["survey_code"]
+
+    if request.cookies.get(f"completed_{survey_id}"):
+        return render_template("already-finished.html")
+
+    survey = surveys[survey_id]
+    session[current_survey_key] = survey_id
 
     return render_template("start-survey.html", survey=survey)
 
@@ -32,10 +54,18 @@ def survey_questions():
 def handle_questions():
     """Saving Responses and navigating to next question."""
     choice = request.form["answer"]
-    print(choice)
+    text = request.form.get("text", "")
+
+    print(choice, text)
+
+    # adding below responses to list in session storage
     responses = session[responses_key]
-    responses.append(choice)
+    responses.append({"choice": choice, "text": text})
+
+    # adding the below responses to the session storage
     session[responses_key] = responses
+    survey_code = session[current_survey_key]
+    survey = surveys[survey_code]
 
     if len(responses) == len(survey.questions):
         return redirect("/end")
@@ -49,6 +79,8 @@ def show_questions(qid):
     """show question"""
 
     responses = session.get(responses_key)
+    survey_code = session[current_survey_key]
+    survey = surveys[survey_code]
 
     if responses is None:
         return redirect("/")
@@ -67,4 +99,13 @@ def show_questions(qid):
 
 @app.route("/end")
 def end():
-    return render_template("end.html")
+
+    survey_id = session[current_survey_key]
+    survey = surveys[survey_id]
+    responses = session[responses_key]
+
+    html = render_template("end.html", survey=survey, responses=responses)
+
+    response = make_response(html)
+    response.set_cookie(f"completed_{survey_id}", "yes", max_age=60)
+    return response
